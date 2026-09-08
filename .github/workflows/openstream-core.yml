@@ -1,0 +1,82 @@
+name: OpenStream Core
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "core/**"
+      - "tests/**"
+      - "CMakeLists.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  core:
+    name: Build OpenStream Core
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            g++ \
+            pkg-config
+
+      - name: Configure
+        run: |
+          cmake \
+            -S . \
+            -B build \
+            -G Ninja \
+            -DOPENSTREAM_BUILD_TESTS=ON \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: |
+          cmake --build build --parallel
+
+      - name: Test
+        run: |
+          ctest \
+            --test-dir build \
+            --output-on-failure
+
+      - name: Generate build information
+        run: |
+          mkdir -p build-info
+
+          cat > build-info/BUILD.md <<EOF
+          # OpenStream Core Build
+
+          Build date: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          Compiler:
+          $(g++ --version | head -n 1)
+
+          CMake:
+          $(cmake --version | head -n 1)
+
+          Generator:
+          Ninja
+
+          Configuration:
+          Release
+          EOF
+
+      - name: Upload core build
+        uses: actions/upload-artifact@v7
+        with:
+          name: OpenStream-Core
+          path: |
+            build-info/
+            build/
+          if-no-files-found: error
