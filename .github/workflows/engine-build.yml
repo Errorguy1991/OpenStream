@@ -1,0 +1,68 @@
+name: OpenStream Engine Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Prepare streaming engine
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout OpenStream
+        uses: actions/checkout@v5
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git \
+            cmake \
+            ninja-build \
+            pkg-config \
+            build-essential
+
+      - name: Clone Sunshine source
+        run: |
+          git clone --depth 1 \
+            https://github.com/LizardByte/Sunshine.git \
+            third_party/sunshine
+
+      - name: Clone Moonlight common library
+        run: |
+          git clone --depth 1 \
+            https://github.com/moonlight-stream/moonlight-common-c.git \
+            third_party/moonlight-common-c
+
+      - name: Record upstream revisions
+        run: |
+          {
+            echo "# OpenStream upstream components"
+            echo
+            echo "## Sunshine"
+            cd third_party/sunshine
+            git log -1 --format='Commit: %H%nDate: %cI'
+            cd ../..
+            echo
+            echo "## Moonlight common-c"
+            cd third_party/moonlight-common-c
+            git log -1 --format='Commit: %H%nDate: %cI'
+          } > THIRD_PARTY_VERSIONS.md
+
+      - name: Preserve upstream license locations
+        run: |
+          test -f third_party/sunshine/LICENSE || true
+          test -f third_party/moonlight-common-c/LICENSE || true
+
+      - name: Save upstream source
+        uses: actions/upload-artifact@v7
+        with:
+          name: OpenStream-Upstream-Source
+          path: |
+            third_party/sunshine
+            third_party/moonlight-common-c
+            THIRD_PARTY_VERSIONS.md
+          if-no-files-found: error
