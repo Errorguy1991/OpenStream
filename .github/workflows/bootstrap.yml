@@ -1,0 +1,250 @@
+name: OpenStream Bootstrap
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configure Git
+        run: |
+          git config user.name "OpenStream Builder"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create directories
+        run: |
+          mkdir -p \
+            apps/windows \
+            apps/android \
+            core/include/openstream \
+            core/src \
+            engine/capture \
+            engine/encode \
+            engine/decode \
+            engine/audio \
+            networking \
+            input \
+            ui/windows \
+            ui/android \
+            tests \
+            docs \
+            packaging \
+            scripts \
+            third_party
+
+      - name: Create project marker
+        run: |
+          cat > OPENSTREAM.md <<'EOF'
+          # OpenStream
+
+          Modern low-latency game streaming platform.
+
+          Targets:
+          - Windows x64 host
+          - Android ARM64 client
+
+          Features planned:
+          - AV1 / HEVC / H.264
+          - Hardware video encoding/decoding
+          - Low-latency UDP media transport
+          - Adaptive bitrate
+          - Audio streaming
+          - Gamepad input
+          - Keyboard and mouse input
+          - Touch controls
+          - Game discovery
+          - Device pairing
+          - Meshnet-friendly connectivity
+          - Modern Windows UI
+          - Modern Android UI
+          - Network diagnostics
+          EOF
+
+      - name: Create architecture document
+        run: |
+          cat > docs/ARCHITECTURE.md <<'EOF'
+          # OpenStream Architecture
+
+          ## Host
+
+          Windows gaming PC.
+
+          Responsibilities:
+
+          - Game discovery
+          - Game launching
+          - Desktop/game capture
+          - Hardware video encoding
+          - Audio capture
+          - Input injection
+          - Session management
+
+          ## Client
+
+          Android tablet.
+
+          Responsibilities:
+
+          - Device pairing
+          - Game library
+          - Hardware video decoding
+          - Audio playback
+          - Controller input
+          - Keyboard/mouse
+          - Touch controls
+          - Diagnostics
+
+          ## Network
+
+          Preferred topology:
+
+              Windows PC
+                   |
+              Private network / Meshnet
+                   |
+              Android tablet
+
+          ## Video
+
+          Codec negotiation preference:
+
+              AV1
+               |
+              HEVC
+               |
+              H.264
+
+          Actual selection depends on hardware and client support.
+
+          ## UX
+
+          OpenStream has its own user interface.
+
+          The UI must not expose the legacy Sunshine web interface
+          or Moonlight interface to the user.
+          EOF
+
+      - name: Create protocol document
+        run: |
+          cat > docs/PROTOCOL.md <<'EOF'
+          # OpenStream Protocol
+
+          The protocol separates:
+
+          1. Control
+          2. Video
+          3. Audio
+          4. Input
+          5. Telemetry
+
+          Video and audio are optimized for low latency.
+
+          Old media packets must not block newer media.
+
+          Input is prioritized because interactive response is more
+          important than retransmitting obsolete video.
+
+          Telemetry includes:
+
+          - RTT
+          - jitter
+          - packet loss
+          - bandwidth
+          - encoder latency
+          - decoder latency
+          - render latency
+          - FPS
+
+          The host dynamically adjusts streaming parameters according
+          to measured conditions.
+          EOF
+
+      - name: Create placeholder CMake
+        run: |
+          cat > CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.25)
+
+          project(OpenStream VERSION 0.1.0 LANGUAGES CXX)
+
+          set(CMAKE_CXX_STANDARD 20)
+          set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+          add_subdirectory(core)
+
+          if(WIN32)
+              add_subdirectory(apps/windows)
+          endif()
+          EOF
+
+      - name: Create core CMake
+        run: |
+          cat > core/CMakeLists.txt <<'EOF'
+          add_library(OpenStreamCore STATIC
+              src/version.cpp
+          )
+
+          target_include_directories(OpenStreamCore
+              PUBLIC
+                  ${CMAKE_CURRENT_SOURCE_DIR}/include
+          )
+
+          target_compile_features(OpenStreamCore
+              PUBLIC cxx_std_20
+          )
+          EOF
+
+      - name: Create version header
+        run: |
+          cat > core/include/openstream/version.hpp <<'EOF'
+          #pragma once
+
+          namespace openstream {
+
+          inline constexpr const char* kName = "OpenStream";
+          inline constexpr const char* kVersion = "0.1.0";
+
+          }
+          EOF
+
+      - name: Create version source
+        run: |
+          cat > core/src/version.cpp <<'EOF'
+          #include "openstream/version.hpp"
+          EOF
+
+      - name: Create gitignore
+        run: |
+          cat > .gitignore <<'EOF'
+          build/
+          build-*/
+          out/
+          bin/
+          obj/
+          .vs/
+          .idea/
+          .gradle/
+          local.properties
+          *.iml
+          *.user
+          *.suo
+          *.jks
+          *.keystore
+          *.p12
+          *.pem
+          *.key
+          dist/
+          EOF
+
+      - name: Commit generated structure
+        run: |
+          git add .
+          git diff --cached --quiet || git commit -m "Bootstrap OpenStream project"
+          git push
