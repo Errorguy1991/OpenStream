@@ -1,1 +1,192 @@
+name: OpenStream - Master Build
 
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openstream-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ============================================================
+  # WINDOWS
+  # ============================================================
+
+  windows:
+    name: Windows Host
+    runs-on: windows-2025
+
+    steps:
+      - name: Checkout OpenStream
+        uses: actions/checkout@v5
+
+      - name: Configure CMake
+        shell: pwsh
+        run: |
+          cmake `
+            -S . `
+            -B build `
+            -A x64 `
+            -DOPENSTREAM_BUILD_TESTS=OFF
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake `
+            --build build `
+            --config Release `
+            --parallel
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+
+          if (Test-Path "build/apps/windows/Release/OpenStreamHost.exe") {
+            Copy-Item `
+              "build/apps/windows/Release/OpenStreamHost.exe" `
+              "dist/OpenStreamHost.exe"
+          }
+
+          Compress-Archive `
+            -Path dist/OpenStreamHost.exe `
+            -DestinationPath dist/OpenStream-Windows-x64.zip
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: OpenStream-Windows-x64
+          path: dist/OpenStream-Windows-x64.zip
+          if-no-files-found: error
+
+
+  # ============================================================
+  # CORE TESTS
+  # ============================================================
+
+  core:
+    name: Core Tests
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            g++
+
+      - name: Configure
+        run: |
+          cmake \
+            -S . \
+            -B build \
+            -G Ninja \
+            -DOPENSTREAM_BUILD_TESTS=ON \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: |
+          cmake \
+            --build build \
+            --parallel
+
+      - name: Test
+        run: |
+          ctest \
+            --test-dir build \
+            --output-on-failure
+
+
+  # ============================================================
+  # ANDROID
+  # ============================================================
+
+  android:
+    name: Android Client
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: |
+          sdkmanager "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.2.12479018"
+
+      - name: Check Android project
+        shell: bash
+        run: |
+          if [ ! -f apps/android/gradlew ]; then
+            echo "Android project has not been generated yet."
+            echo "Skipping APK build until the OpenStream Android client is added."
+            exit 0
+          fi
+
+      - name: Make Gradle executable
+        if: ${{ hashFiles('apps/android/gradlew') != '' }}
+        run: chmod +x apps/android/gradlew
+
+      - name: Build Android
+        if: ${{ hashFiles('apps/android/gradlew') != '' }}
+        working-directory: apps/android
+        run: ./gradlew assembleRelease
+
+      - name: Upload Android artifact
+        if: ${{ hashFiles('apps/android/app/build/outputs/apk/release/*.apk') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: OpenStream-Android
+          path: apps/android/app/build/outputs/apk/release/*.apk
+
+
+  # ============================================================
+  # BUILD SUMMARY
+  # ============================================================
+
+  summary:
+    name: Build Summary
+    needs:
+      - windows
+      - core
+      - android
+
+    runs-on: ubuntu-24.04
+
+    if: always()
+
+    steps:
+      - name: Summary
+        run: |
+          echo "======================================"
+          echo "        OPENSTREAM BUILD"
+          echo "======================================"
+          echo
+          echo "Windows: ${{ needs.windows.result }}"
+          echo "Core:    ${{ needs.core.result }}"
+          echo "Android: ${{ needs.android.result }}"
+          echo
+          echo "Artifacts are available in the workflow run."
